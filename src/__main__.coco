@@ -8,6 +8,7 @@ roundF = round$(ndigits=2)
 
 import sys
 import csv
+import colorsys
 import random
 import pyqtgraph as pg
 from pyqtgraph import QtCore, QtGui
@@ -21,6 +22,15 @@ data Vertex(x,y):
     def __new__(cls,x,y):
         return (roundF(x),roundF(y)) |*> datamaker(cls)
 
+#Camps a value between mival and maxval
+def clamp(value,minval,maxval) = sorted((minval, value, maxval))[1]
+        
+def getParticalRGBA(pid):
+    scaledPid = 255/pid
+    rgb = colorsys.hsv_to_rgb(scaledPid,1,1)
+    scaledRgb = [clamp(v,0,1) * 255 for v in rgb] |> tuple
+    return scaledRgb + (255,)
+
 class ParticalRendererItem(pg.GraphicsObject):
     """Renders the particals"""
     def __init__(self,data):
@@ -31,11 +41,15 @@ class ParticalRendererItem(pg.GraphicsObject):
     def generatePicture(self):
         self.picture = QtGui.QPicture()
         p = QtGui.QPainter(self.picture)
-        p.setPen(pg.mkPen('w'))
         for partical in self.data:
-            prodPos = QtCore.QPoint(partical.xProd,partical.yProd)
+            color = getParticalRGBA(partical.pid)
+            for x in color:
+                if (x<0) or (x>255):
+                    print(partical.pid,color)
+            p.setPen(pg.mkPen(color))
+            prodPos = QtCore.QPointF(partical.xProd,partical.yProd)
             #prodPos = QtCore.QPoint(0,0)
-            momentumPos = QtCore.QPoint(partical.px + partical.xProd ,partical.py + partical.yProd)
+            momentumPos = QtCore.QPointF(partical.px + partical.xProd ,partical.py + partical.yProd)
             #momentumPos = QtCore.QPoint(0,0)
             p.drawLine(momentumPos,prodPos)
         p.end()
@@ -81,8 +95,12 @@ def loadParticals(reader) = reader |> map$(loadParticalFromRow) |> list
 
 def loadVertexFromPartical(partical) = Vertex(partical.xProd,partical.yProd)
 def loadVertesis(particals) = particals |> map$(loadVertexFromPartical) |> set
+
+
 def getVertexXList(vertises) = [v.x for v in vertises]
 def getVertexYList(vertises) = [v.y for v in vertises]
+def getUniquePIDs(particals) = [partical.pid for partical in particals] |> set
+
 
 def sample100(data) = random.sample(data,100)
 
@@ -105,7 +123,15 @@ def main():
     p1 = win.addPlot(name='Particals')
     particals |> ParticalRendererItem |> p1.addItem
     p1.setWindowTitle('Particals')
-
+    
+    #Add color legend
+    l = pg.LegendItem((100,60), offset=(70,30))
+    l.setParentItem(p1.graphicsItem())
+    for pid in getUniquePIDs(particals):
+        color = getParticalRGBA(pid)
+        plotDataItem = pg.PlotDataItem([0],[0],pen = pg.mkPen(color))   #Create a dummy set of data for use in legend
+        l.addItem(plotDataItem,str(pid))    #Add the item to the ledgend
+    
     #Plot Vertieses
     p2 = win.addPlot(name='Vertieses')
     p2.plot(vertisesX, vertisesY, pen=None, symbol='o', symbolPen=None, symbolSize=10, symbolBrush=(255, 255, 255, 200))
