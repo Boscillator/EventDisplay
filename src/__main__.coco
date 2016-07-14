@@ -65,7 +65,7 @@ def getParticalRGBA(pid):
 
 class ParticalRendererItem(pg.GraphicsObject):
     """
-    Renders the particals
+    Renders the particals as momentum vectors
     See custom graphics example in pyqtgraph (`python -m pyqtgraph.examples`, click on custom graphics)
     """
     def __init__(self,data):
@@ -97,6 +97,61 @@ class ParticalRendererItem(pg.GraphicsObject):
         ## or else we will get artifacts and possibly crashing.
         ## (in this case, QPicture does all the work of computing the bouning rect for us)
         return QtCore.QRectF(self.picture.boundingRect())
+ 
+class ParticalShowerRendererItem(pg.GraphicsObject):
+    """
+    Renders the particals as a partical shower.
+    See custom graphics example in pyqtgraph (`python -m pyqtgraph.examples`, click on custom graphics)
+    """
+    def __init__(self,data):
+        """
+        Constructor
+        Args:
+            data (List[Partical]): list of particals to render.
+        """
+        pg.GraphicsObject.__init__(self)    #Needed to be called for a graphics object
+        self.data = data    #store data
+        self.generatePicture()
+        
+
+    def _getParticalWithMother(self,mother):
+        """
+        Gets a partical with mother `mother`
+        Args:
+            mother (Partical): the mother partical your looking for the child of
+        Returns:
+            (Partical): The child of partical `mother`
+            OR
+            (None): Their is no child of partical `mother
+        """
+        for partical in self.data:
+            if (partical.mother1 == mother.id) or (partical.mother2 == mother.id):
+                return partical
+        return None #If no partical returned, return none
+        
+        
+    def generatePicture(self):
+        self.picture = QtGui.QPicture()
+        p = QtGui.QPainter(self.picture)
+        for partical in self.data:
+            color = getParticalRGBA(partical.pid)
+            p.setPen(pg.mkPen(color))   #Use color `color` for drawing
+            prodPos = QtCore.QPointF(partical.xProd,partical.yProd) #The location as a `QPointF` of the particals origin
+            child = self._getParticalWithMother(partical)
+            if not child:
+                continue    #If their was no child, skip this partical
+            childPos = QtCore.QPointF(child.xProd,child.yProd)
+            p.drawLine(prodPos,childPos)     #Actualy draw the line
+        p.end()
+        
+    def paint(self,p,*args):
+        #Don't change, probably
+        p.drawPicture(0,0,self.picture)
+    def boundingRect(self):
+        ## boundingRect _must_ indicate the entire area that will be drawn on
+        ## or else we will get artifacts and possibly crashing.
+        ## (in this case, QPicture does all the work of computing the bouning rect for us)
+        return QtCore.QRectF(self.picture.boundingRect()) 
  
 class RingRendererItem(pg.GraphicsObject):
     """Renders a tracking ring"""
@@ -219,10 +274,23 @@ def main():
     rings2 |> p2.addItem
     p2.setWindowTitle('Vertieses')
     
+    win.nextRow()   #Put next graph on next row
+    
+    #Plot Partical Shower
+    p3 = win.addPlot(name='Particals')
+    particals |> ParticalShowerRendererItem |> p3.addItem     #Creates a partical render item and add it to the plot
+    rings3 = RingRendererItem(trackingRings)
+    rings3 |> p3.addItem
+    p3.setWindowTitle('Partical Shower')
+    
     #Link the plots pan
     p1.setXLink('Vertieses')
     p1.setYLink('Vertieses')
+    p3.setXLink('Vertieses')
+    p3.setYLink('Vertieses')
     p1.setAspectLocked()
+    
+    
 
 
 
