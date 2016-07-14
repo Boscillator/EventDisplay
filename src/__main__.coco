@@ -196,8 +196,6 @@ def main():
 
     win = pg.GraphicsWindow()
 
-    #create rings item
-    
     
     #Plot Particals
     p1 = win.addPlot(name='Particals')
@@ -224,6 +222,7 @@ def main():
     #Link the plots pan
     p1.setXLink('Vertieses')
     p1.setYLink('Vertieses')
+    p1.setAspectLocked()
 
 
 
