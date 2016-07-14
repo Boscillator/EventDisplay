@@ -21,6 +21,7 @@ def times(x) = x*10_000
 
 #Frozen set of tracking radii
 trackingRings = f{
+    #n |> times multipes the number by the value in the times function
     41.05 |> times,
     70.16 |> times,
     98.88 |> times,
@@ -37,28 +38,44 @@ trackingRings = f{
 }
 
 data Partical(id,pid,status,mother1,mother2,px,py,pz,m,scale,pol,xProd,yProd,zProd,tau):
-    """Repersents a partical"""
+    """Repersents a partical, bascily a class"""
     pass
 
 data Vertex(x,y):
-    """Repersents a vertex"""
+    """Repersents a vertex, bascily a class"""
     def __new__(cls,x,y):
         return (roundF(x),roundF(y)) |*> datamaker(cls)
 
-#Camps a value between mival and maxval
+#Clamps a value between mival and maxval
+#Eg clamp(0,-1,1) -> 1 clamp(-2,-1,1) -> -1
 def clamp(value,minval,maxval) = sorted((minval, value, maxval))[1]
-        
+                
 def getParticalRGBA(pid):
+    """
+    Givin a pid calculates the color for that pid. The color is in red green blue alpha form.
+    Args:
+        pid (int): The PID of a partical
+    Returns:
+        (tuple[r,b,v,a]): A tuple containing a color in rgba form
+    """
     scaledPid = 255/abs(pid)
     rgb = colorsys.hsv_to_rgb(scaledPid,1,1)
     scaledRgb = [clamp(v,0,1) * 255 for v in rgb] |> tuple
     return scaledRgb + (255,)
 
 class ParticalRendererItem(pg.GraphicsObject):
-    """Renders the particals"""
+    """
+    Renders the particals
+    See custom graphics example in pyqtgraph (`python -m pyqtgraph.examples`, click on custom graphics)
+    """
     def __init__(self,data):
-        pg.GraphicsObject.__init__(self)
-        self.data = data
+        """
+        Constructor
+        Args:
+            data (List[Partical]): list of particals to render.
+        """
+        pg.GraphicsObject.__init__(self)    #Needed to be called for a graphics object
+        self.data = data    #store data
         self.generatePicture()
         
     def generatePicture(self):
@@ -66,16 +83,14 @@ class ParticalRendererItem(pg.GraphicsObject):
         p = QtGui.QPainter(self.picture)
         for partical in self.data:
             color = getParticalRGBA(partical.pid)
-            for x in color:
-                if (x<0) or (x>255):
-                    print(partical.pid,color)
-            p.setPen(pg.mkPen(color))
-            prodPos = QtCore.QPointF(partical.xProd,partical.yProd)
-            momentumPos = QtCore.QPointF(partical.px + partical.xProd ,partical.py + partical.yProd)
-            p.drawLine(momentumPos,prodPos)
+            p.setPen(pg.mkPen(color))   #Use color `color` for drawing
+            prodPos = QtCore.QPointF(partical.xProd,partical.yProd) #The location as a `QPointF` of the particals origin
+            momentumPos = QtCore.QPointF(partical.px + partical.xProd ,partical.py + partical.yProd)    #The location as a `QPointF` of the particals momentum in relation to the position
+            p.drawLine(momentumPos,prodPos)     #Actualy draw the line
         p.end()
         
     def paint(self,p,*args):
+        #Don't change, probably
         p.drawPicture(0,0,self.picture)
     def boundingRect(self):
         ## boundingRect _must_ indicate the entire area that will be drawn on
@@ -86,6 +101,11 @@ class ParticalRendererItem(pg.GraphicsObject):
 class RingRendererItem(pg.GraphicsObject):
     """Renders a tracking ring"""
     def __init__(self,radii):
+        """
+        Constructor
+        Args:
+            radii (list[float]): A list of the radii of the rings to be rendered
+        """
         pg.GraphicsObject.__init__(self)
         self.radii = radii
         self.generatePicture()
@@ -108,15 +128,20 @@ class RingRendererItem(pg.GraphicsObject):
         ## (in this case, QPicture does all the work of computing the bouning rect for us)
         return QtCore.QRectF(self.picture.boundingRect()) 
    
+#Function, takes a number (n) and and iterator, return the first n elements of that iterator
 def take(n,iter) = iter$[:n]
+#Function, returns the first element of an iterator
 def first(iterator) = iterator$[0]
 
+#Opens a file
 def getCsvFileByName(fileName) = open(fileName)
+#Gets a csv reader from a file
 def getCsvReaderByFile(csvFile) = csv.DictReader(csvFile)
-getCsvReader = getCsvReaderByFile..getCsvFileByName
+#Gets a csv reader from a file name
+getCsvReader = getCsvReaderByFile..getCsvFileByName     #this is function composition, f..g = f(g())
 
 
-
+#Takes a row of a csv reader, returns the partical repersented by that row
 def loadParticalFromRow(row) = Partical(
                                     row['id'] |> int,
                                     row['pid'] |> int,
@@ -124,7 +149,7 @@ def loadParticalFromRow(row) = Partical(
                                     row['mother1'] |> int,
                                     row['mother2'] |> int,
                                     
-                                    row['px'] |> float |> times,
+                                    row['px'] |> float |> times,    #times scales the number to use our chordinat system
                                     row['py'] |> float |> times,
                                     row['pz'] |> float |> times,
                                     row['m'] |> float,
@@ -136,29 +161,35 @@ def loadParticalFromRow(row) = Partical(
                                     row['tau'] |> float
 )
 
+#Loads particals from a csv reader, returns a list
 def loadParticals(reader) = reader |> map$(loadParticalFromRow) |> list
-def filterStableParticals(particals) = filter((partical) -> (partical.status >= 0),particals) |> list
+#Returns a list of stable particals
+def filterStableParticals(particals) = filter(  (partical) -> (partical.status >= 0)  ,particals) |> list
 
+#Given a partical returns a vertex discrybing that particals position
 def loadVertexFromPartical(partical) = Vertex(partical.xProd,partical.yProd)
+#Returns a set of vertesis from a list of particals
 def loadVertesis(particals) = particals |> map$(loadVertexFromPartical) |> set
 
-
+#Given a list of vertesis returns a list of their x cords
 def getVertexXList(vertises) = [v.x for v in vertises]
+#Given a list of vertesis returns a list of their y cords
 def getVertexYList(vertises) = [v.y for v in vertises]
+
+#Given a list of particals returns a set of their pids
 def getUniquePIDs(particals) = [abs(partical.pid) for partical in particals] |> set
 
-
-def sample100(data) = random.sample(data,100)
-
+#Displays usage for the program
 def usage(): print("Usage: EventDisplay <event.csv>")
 
+#see's if the program as the right number of args
 if len(sys.argv) != 2:
     usage()
 
 def main():
     win = pg.GraphicsWindow(title="Event Display")
 
-    particals = getCsvReader(sys.argv[1]) |> loadParticals |> filterStableParticals      #Get particals from file
+    particals = getCsvReader(sys.argv[1]) |> loadParticals #|> filterStableParticals      #Get particals from file
     vertises = particals |> loadVertesis        #Get vertesis from particals
     vertisesX = vertises |> getVertexXList      #Get a list of the x cords of vertises
     vertisesY = vertises |> getVertexYList      #Get a list of the y cords of vertises
@@ -170,14 +201,14 @@ def main():
     
     #Plot Particals
     p1 = win.addPlot(name='Particals')
-    particals |> ParticalRendererItem |> p1.addItem
+    particals |> ParticalRendererItem |> p1.addItem     #Creates a partical render item and add it to the plot
     rings1 = RingRendererItem(trackingRings)
     rings1 |> p1.addItem
     p1.setWindowTitle('Particals')
     
     #Add color legend
-    l = pg.LegendItem((100,60), offset=(70,30))
-    l.setParentItem(p1.graphicsItem())
+    l = pg.LegendItem((100,60), offset=(70,30))     #Create the ledgend
+    l.setParentItem(p1.graphicsItem())          #Add the legend to the plot
     for pid in getUniquePIDs(particals):
         color = getParticalRGBA(pid)
         plotDataItem = pg.PlotDataItem([0],[0],pen = pg.mkPen(color))   #Create a dummy set of data for use in legend
