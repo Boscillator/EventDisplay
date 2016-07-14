@@ -4,14 +4,37 @@ PLEASE NOTE: This uses Coconut (http://coconut-lang.org/)
 """
 __author__ = 'Fred Buchanan, oscillator.b@gmail.com'
 
-roundF = round$(ndigits=2)
 
 import sys
 import csv
 import colorsys
 import random
+import itertools
 import pyqtgraph as pg
 from pyqtgraph import QtCore, QtGui
+
+#function for how much rounding should be done on vertesis
+roundF = round$(ndigits=2)
+
+#Scale factor to remove stupid squares
+def times(x) = x*10_000
+
+#Frozen set of tracking radii
+trackingRings = f{
+    41.05 |> times,
+    70.16 |> times,
+    98.88 |> times,
+    255 |> times,
+    340 |> times,
+    430 |> times,
+    520 |> times,
+    610 |> times,
+    696 |> times,
+    782 |> times,
+    868 |> times,
+    965 |> times,
+    1080 |> times
+}
 
 data Partical(id,pid,status,mother1,mother2,px,py,pz,m,scale,pol,xProd,yProd,zProd,tau):
     """Repersents a partical"""
@@ -26,7 +49,7 @@ data Vertex(x,y):
 def clamp(value,minval,maxval) = sorted((minval, value, maxval))[1]
         
 def getParticalRGBA(pid):
-    scaledPid = 255/pid
+    scaledPid = 255/abs(pid)
     rgb = colorsys.hsv_to_rgb(scaledPid,1,1)
     scaledRgb = [clamp(v,0,1) * 255 for v in rgb] |> tuple
     return scaledRgb + (255,)
@@ -48,9 +71,7 @@ class ParticalRendererItem(pg.GraphicsObject):
                     print(partical.pid,color)
             p.setPen(pg.mkPen(color))
             prodPos = QtCore.QPointF(partical.xProd,partical.yProd)
-            #prodPos = QtCore.QPoint(0,0)
             momentumPos = QtCore.QPointF(partical.px + partical.xProd ,partical.py + partical.yProd)
-            #momentumPos = QtCore.QPoint(0,0)
             p.drawLine(momentumPos,prodPos)
         p.end()
         
@@ -61,7 +82,31 @@ class ParticalRendererItem(pg.GraphicsObject):
         ## or else we will get artifacts and possibly crashing.
         ## (in this case, QPicture does all the work of computing the bouning rect for us)
         return QtCore.QRectF(self.picture.boundingRect())
-   
+ 
+class RingRendererItem(pg.GraphicsObject):
+    """Renders a tracking ring"""
+    def __init__(self,radii):
+        pg.GraphicsObject.__init__(self)
+        self.radii = radii
+        self.generatePicture()
+        
+    def generatePicture(self):
+        self.picture = QtGui.QPicture()
+        center = QtCore.QPoint(0,0)
+        
+        p = QtGui.QPainter(self.picture)
+        p.setPen(pg.mkPen('w'))
+        for radius in self.radii:
+            p.drawEllipse(center,radius,radius)
+        p.end()
+        
+    def paint(self,p,*args):
+        p.drawPicture(0,0,self.picture)
+    def boundingRect(self):
+        ## boundingRect _must_ indicate the entire area that will be drawn on
+        ## or else we will get artifacts and possibly crashing.
+        ## (in this case, QPicture does all the work of computing the bouning rect for us)
+        return QtCore.QRectF(self.picture.boundingRect()) 
    
 def take(n,iter) = iter$[:n]
 def first(iterator) = iterator$[0]
@@ -70,7 +115,7 @@ def getCsvFileByName(fileName) = open(fileName)
 def getCsvReaderByFile(csvFile) = csv.DictReader(csvFile)
 getCsvReader = getCsvReaderByFile..getCsvFileByName
 
-def times(x) = x*10_000
+
 
 def loadParticalFromRow(row) = Partical(
                                     row['id'] |> int,
@@ -92,6 +137,7 @@ def loadParticalFromRow(row) = Partical(
 )
 
 def loadParticals(reader) = reader |> map$(loadParticalFromRow) |> list
+def filterStableParticals(particals) = filter((partical) -> (partical.status >= 0),particals) |> list
 
 def loadVertexFromPartical(partical) = Vertex(partical.xProd,partical.yProd)
 def loadVertesis(particals) = particals |> map$(loadVertexFromPartical) |> set
@@ -99,7 +145,7 @@ def loadVertesis(particals) = particals |> map$(loadVertexFromPartical) |> set
 
 def getVertexXList(vertises) = [v.x for v in vertises]
 def getVertexYList(vertises) = [v.y for v in vertises]
-def getUniquePIDs(particals) = [partical.pid for partical in particals] |> set
+def getUniquePIDs(particals) = [abs(partical.pid) for partical in particals] |> set
 
 
 def sample100(data) = random.sample(data,100)
@@ -112,16 +158,21 @@ if len(sys.argv) != 2:
 def main():
     win = pg.GraphicsWindow(title="Event Display")
 
-    particals = getCsvReader(sys.argv[1]) |> loadParticals      #Get particals from file
+    particals = getCsvReader(sys.argv[1]) |> loadParticals |> filterStableParticals      #Get particals from file
     vertises = particals |> loadVertesis        #Get vertesis from particals
     vertisesX = vertises |> getVertexXList      #Get a list of the x cords of vertises
     vertisesY = vertises |> getVertexYList      #Get a list of the y cords of vertises
 
     win = pg.GraphicsWindow()
 
+    #create rings item
+    
+    
     #Plot Particals
     p1 = win.addPlot(name='Particals')
     particals |> ParticalRendererItem |> p1.addItem
+    rings1 = RingRendererItem(trackingRings)
+    rings1 |> p1.addItem
     p1.setWindowTitle('Particals')
     
     #Add color legend
@@ -135,11 +186,13 @@ def main():
     #Plot Vertieses
     p2 = win.addPlot(name='Vertieses')
     p2.plot(vertisesX, vertisesY, pen=None, symbol='o', symbolPen=None, symbolSize=10, symbolBrush=(255, 255, 255, 200))
+    rings2 = RingRendererItem(trackingRings)
+    rings2 |> p2.addItem
     p2.setWindowTitle('Vertieses')
-
+    
     #Link the plots pan
-    p2.setXLink('Particals')
-    p2.setYLink('Particals')
+    p1.setXLink('Vertieses')
+    p1.setYLink('Vertieses')
 
 
 
